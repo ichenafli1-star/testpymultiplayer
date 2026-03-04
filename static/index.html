@@ -3,17 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Камень Ножницы Бумага Онлайн</title>
+  <title>Cube Shooter Online</title>
   <style>
     :root {
+      --text: #1a2435;
       --card: #ffffff;
-      --text: #182433;
-      --accent: #0d8a73;
-      --accent-dark: #0b6f5d;
-      --border: #d8e1ee;
+      --border: #d2dbea;
+      --accent: #127a6d;
+      --accent-2: #0e5f79;
       --muted: #63738a;
       --danger: #c13232;
-      --warn: #9a6c00;
     }
 
     * { box-sizing: border-box; }
@@ -23,127 +22,119 @@
       font-family: "Segoe UI", Tahoma, sans-serif;
       color: var(--text);
       background:
-        radial-gradient(circle at 15% 15%, #d8ecff 0%, transparent 35%),
-        radial-gradient(circle at 85% 20%, #d7ffe8 0%, transparent 40%),
-        linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+        radial-gradient(circle at 18% 14%, #def1ff 0%, transparent 35%),
+        radial-gradient(circle at 78% 16%, #d8ffec 0%, transparent 40%),
+        linear-gradient(180deg, #f9fcff 0%, #eef5ff 100%);
       min-height: 100vh;
       display: grid;
       place-items: center;
-      padding: 20px;
+      padding: 18px;
     }
 
     .app {
       width: 100%;
-      max-width: 760px;
-      background: var(--card);
+      max-width: 980px;
       border: 1px solid var(--border);
-      border-radius: 16px;
-      box-shadow: 0 14px 35px rgba(39, 55, 78, 0.12);
+      border-radius: 14px;
+      background: var(--card);
+      box-shadow: 0 14px 35px rgba(35, 54, 80, 0.12);
       overflow: hidden;
     }
 
     .header {
-      padding: 20px;
-      background: linear-gradient(135deg, #0d8a73 0%, #0a6380 100%);
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
       color: #fff;
+      padding: 16px 20px;
     }
 
     .header h1 {
       margin: 0;
       font-size: 24px;
-      letter-spacing: 0.3px;
     }
 
     .header p {
       margin: 6px 0 0;
-      opacity: 0.9;
+      opacity: 0.92;
       font-size: 14px;
     }
 
     .content {
-      padding: 20px;
+      padding: 16px;
       display: grid;
-      gap: 16px;
+      gap: 12px;
     }
 
     .card {
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 14px;
+      border-radius: 10px;
+      padding: 12px;
       background: #fff;
     }
 
     .row {
       display: flex;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
       align-items: center;
     }
 
     input {
-      height: 38px;
+      height: 36px;
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 0 12px;
-      font-size: 14px;
-      color: var(--text);
+      border-radius: 9px;
+      padding: 0 10px;
       min-width: 140px;
+      font-size: 14px;
     }
 
     button {
       border: none;
-      border-radius: 10px;
-      height: 38px;
-      padding: 0 16px;
-      font-size: 14px;
-      cursor: pointer;
       background: var(--accent);
       color: #fff;
-      transition: background 120ms ease;
+      border-radius: 9px;
+      height: 36px;
+      padding: 0 12px;
+      cursor: pointer;
+      font-size: 14px;
     }
 
-    button:hover { background: var(--accent-dark); }
-    button:disabled { opacity: 0.5; cursor: default; }
+    button:hover { filter: brightness(0.95); }
 
-    .moves button {
-      font-size: 18px;
-      min-width: 110px;
-      height: 46px;
-    }
-
-    .status { color: var(--muted); }
+    .status { color: var(--muted); font-size: 14px; }
     .status.error { color: var(--danger); }
-    .status.warn { color: var(--warn); }
+
+    .arena {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: linear-gradient(180deg, #d9efff 0%, #f7fcff 55%, #e8f4e8 55%, #d9ecd9 100%);
+      display: block;
+      aspect-ratio: 5 / 3;
+    }
 
     ul {
       margin: 8px 0 0;
-      padding: 0;
       list-style: none;
+      padding: 0;
       display: grid;
       gap: 6px;
     }
 
     li {
       border: 1px solid var(--border);
-      border-radius: 9px;
-      padding: 8px 10px;
-      font-size: 14px;
+      border-radius: 8px;
+      padding: 7px 9px;
       display: flex;
       justify-content: space-between;
-      gap: 12px;
+      font-size: 14px;
     }
 
-    .result {
-      font-size: 15px;
-      font-weight: 600;
+    .hint {
+      font-size: 13px;
+      color: var(--muted);
     }
 
-    @media (max-width: 640px) {
-      .moves button {
-        flex: 1;
-        min-width: 0;
-      }
-
+    @media (max-width: 760px) {
       input { width: 100%; }
     }
   </style>
@@ -151,18 +142,17 @@
 <body>
   <div class="app">
     <div class="header">
-      <h1>Камень · Ножницы · Бумага</h1>
-      <p>Создай комнату и сыграй 1 на 1 в браузере</p>
+      <h1>Cube Shooter Online</h1>
+      <p>Создай комнату, подключи друга и стреляй, пока не останется один</p>
     </div>
 
     <div class="content">
       <div class="card">
         <div class="row">
           <input id="nameInput" placeholder="Ваш ник" maxlength="32" />
-          <input id="targetScoreInput" type="number" min="1" max="15" value="3" title="До скольки побед" />
           <button id="createBtn">Создать комнату</button>
         </div>
-        <div class="row" style="margin-top:10px">
+        <div class="row" style="margin-top:8px">
           <input id="roomInput" placeholder="Код комнаты" maxlength="12" />
           <button id="joinBtn">Подключиться</button>
         </div>
@@ -170,165 +160,161 @@
 
       <div class="card">
         <div class="row"><strong>Комната:</strong> <span id="roomLabel">-</span></div>
-        <div class="row" style="margin-top:6px"><strong>Матч до:</strong> <span id="targetLabel">-</span> побед</div>
         <div id="status" class="status" style="margin-top:6px">Не подключено</div>
+        <div class="hint" style="margin-top:6px">Управление: A/D - движение, W - прыжок, Space - выстрел</div>
       </div>
+
+      <canvas id="arena" class="arena" width="1000" height="600"></canvas>
 
       <div class="card">
         <strong>Игроки</strong>
         <ul id="players"></ul>
-      </div>
-
-      <div class="card">
-        <strong>Ход</strong>
-        <div class="row moves" style="margin-top:10px">
-          <button data-move="rock" disabled>Камень</button>
-          <button data-move="scissors" disabled>Ножницы</button>
-          <button data-move="paper" disabled>Бумага</button>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <button id="rematchBtn" disabled>Реванш</button>
-        </div>
-        <div class="result" id="result" style="margin-top:12px">Результат раунда появится здесь</div>
       </div>
     </div>
   </div>
 
   <script>
     const nameInput = document.getElementById('nameInput');
-    const targetScoreInput = document.getElementById('targetScoreInput');
     const roomInput = document.getElementById('roomInput');
     const createBtn = document.getElementById('createBtn');
     const joinBtn = document.getElementById('joinBtn');
     const roomLabel = document.getElementById('roomLabel');
-    const targetLabel = document.getElementById('targetLabel');
     const statusEl = document.getElementById('status');
     const playersEl = document.getElementById('players');
-    const resultEl = document.getElementById('result');
-    const rematchBtn = document.getElementById('rematchBtn');
-    const moveButtons = [...document.querySelectorAll('[data-move]')];
+    const canvas = document.getElementById('arena');
+    const ctx = canvas.getContext('2d');
 
     let ws = null;
     let roomId = null;
     let playerId = null;
-    let playersCache = [];
-    let matchWinner = null;
-    let rematchRequestedBy = [];
+    let lastState = null;
 
-    function setStatus(text, kind = 'normal') {
+    const input = { left: false, right: false, jump: false, shoot: false };
+
+    function setStatus(text, isError = false) {
       statusEl.textContent = text;
-      if (kind === 'error') {
-        statusEl.className = 'status error';
-      } else if (kind === 'warn') {
-        statusEl.className = 'status warn';
-      } else {
-        statusEl.className = 'status';
-      }
+      statusEl.className = isError ? 'status error' : 'status';
     }
 
     function getName() {
-      const n = (nameInput.value || '').trim();
-      return n || 'Игрок';
-    }
-
-    function getTargetScore() {
-      const raw = Number(targetScoreInput.value || '3');
-      if (Number.isNaN(raw)) return 3;
-      return Math.min(15, Math.max(1, Math.floor(raw)));
-    }
-
-    function setMovesEnabled(enabled) {
-      moveButtons.forEach(b => b.disabled = !enabled);
-    }
-
-    function updateRematchButton(statePlayers) {
-      const connectedCount = statePlayers.filter(p => p.connected).length;
-      const canAsk = Boolean(matchWinner) && connectedCount === 2;
-      rematchBtn.disabled = !canAsk;
-
-      if (!canAsk) {
-        return;
-      }
-      if (rematchRequestedBy.includes(playerId)) {
-        setStatus('Ожидание подтверждения реванша от соперника', 'warn');
-      }
+      const name = (nameInput.value || '').trim();
+      return name || 'Игрок';
     }
 
     function renderPlayers(players) {
-      playersCache = players;
       playersEl.innerHTML = '';
       for (const p of players) {
         const li = document.createElement('li');
         const me = p.player_id === playerId ? ' (Вы)' : '';
-        const left = `${p.name}${me} ${p.connected ? 'Онлайн' : 'Оффлайн'} ${p.has_move ? '• ход сделан' : ''}`;
-        const right = `Счет: ${p.score}`;
-        li.innerHTML = `<span>${left}</span><span>${right}</span>`;
+        const state = p.connected ? (p.alive ? 'жив' : 'выбит') : 'оффлайн';
+        li.innerHTML = `<span>${p.name}${me} - ${state}</span><span>HP: ${p.hp} | Победы: ${p.wins}</span>`;
         playersEl.appendChild(li);
       }
     }
 
-    function connectSocket() {
-      if (ws) {
-        ws.close();
+    function draw() {
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.fillStyle = '#99d0ff';
+      ctx.fillRect(0, 0, w, h * 0.55);
+      ctx.fillStyle = '#cce9cc';
+      ctx.fillRect(0, h * 0.55, w, h * 0.45);
+
+      if (!lastState) {
+        requestAnimationFrame(draw);
+        return;
       }
+
+      const world = lastState.world;
+      const sx = w / world.width;
+      const sy = h / world.height;
+
+      ctx.fillStyle = '#8fb58f';
+      ctx.fillRect(0, world.ground_y * sy, w, h - world.ground_y * sy);
+
+      for (const b of lastState.bullets) {
+        ctx.beginPath();
+        ctx.fillStyle = '#20263a';
+        ctx.arc(b.x * sx, b.y * sy, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      for (const p of lastState.players) {
+        const isMe = p.player_id === playerId;
+        const x = p.x * sx;
+        const y = p.y * sy;
+        const size = world.player_size * sx;
+
+        if (!p.connected) {
+          ctx.globalAlpha = 0.45;
+        }
+
+        ctx.fillStyle = p.alive ? (isMe ? '#0f6fd8' : '#d13c3c') : '#6b7283';
+        ctx.fillRect(x, y, size, size);
+
+        ctx.strokeStyle = '#15223a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const gunY = y + size * 0.5;
+        const gunX1 = x + size * 0.5;
+        const gunX2 = p.facing >= 0 ? x + size + 10 : x - 10;
+        ctx.moveTo(gunX1, gunY);
+        ctx.lineTo(gunX2, gunY);
+        ctx.stroke();
+
+        const hpBarWidth = size;
+        const hpRatio = Math.max(0, p.hp) / 100;
+        ctx.fillStyle = '#e5e7eb';
+        ctx.fillRect(x, y - 10, hpBarWidth, 6);
+        ctx.fillStyle = '#1f9d55';
+        ctx.fillRect(x, y - 10, hpBarWidth * hpRatio, 6);
+
+        ctx.fillStyle = '#111827';
+        ctx.font = '12px Segoe UI';
+        ctx.fillText(p.name, x, y - 14);
+
+        ctx.globalAlpha = 1;
+      }
+
+      requestAnimationFrame(draw);
+    }
+
+    function connectSocket() {
+      if (ws) ws.close();
+
       const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
       ws = new WebSocket(`${protocol}://${location.host}/ws/${roomId}?player_id=${playerId}`);
 
       ws.onopen = () => {
-        setStatus('Подключено. Ждем второго игрока или ход.');
+        setStatus('Подключено. Ждем второго игрока...');
       };
 
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
-
-        if (msg.type === 'state') {
+        if (msg.type === 'game_state') {
+          lastState = msg;
           roomLabel.textContent = msg.room_id;
-          targetLabel.textContent = msg.target_score;
-          matchWinner = msg.match_winner;
-          rematchRequestedBy = msg.rematch_requested_by || [];
-
           renderPlayers(msg.players);
-          setMovesEnabled(Boolean(msg.ready_to_play));
-          updateRematchButton(msg.players);
-
-          if (!msg.ready_to_play && !matchWinner) {
-            setStatus('Комната активна. Нужно 2 подключенных игрока.');
+          if (!msg.ready_to_play) {
+            setStatus('Нужны 2 онлайн игрока для боя');
           }
-        } else if (msg.type === 'round_result') {
-          const entries = Object.entries(msg.moves).map(([pid, move]) => {
-            const p = playersCache.find(x => x.player_id === pid);
-            return `${p ? p.name : pid}: ${move}`;
-          });
-
-          if (!msg.winner) {
-            resultEl.textContent = `Ничья. ${entries.join(' | ')}`;
-          } else {
-            const w = playersCache.find(x => x.player_id === msg.winner);
-            resultEl.textContent = `Раунд: победил ${w ? w.name : msg.winner}. ${entries.join(' | ')}`;
-          }
-        } else if (msg.type === 'match_over') {
-          resultEl.textContent = `Матч завершен. Победитель: ${msg.winner_name}. Нажмите "Реванш".`;
-          setStatus(`Матч до ${msg.target_score} побед завершен`, 'warn');
-          setMovesEnabled(false);
-          rematchBtn.disabled = false;
-        } else if (msg.type === 'match_reset') {
-          resultEl.textContent = 'Новый матч начался. Делайте ход.';
-          setStatus(msg.message || 'Новый матч начался');
+        } else if (msg.type === 'round_over') {
+          setStatus(msg.message || `Победил ${msg.winner_name}`);
+        } else if (msg.type === 'round_reset') {
+          setStatus(msg.message || 'Новый раунд');
         } else if (msg.type === 'error') {
-          setStatus(msg.message || 'Ошибка', 'error');
-        } else if (msg.type === 'info') {
-          setStatus(msg.message || 'Инфо', 'warn');
+          setStatus(msg.message || 'Ошибка', true);
         }
       };
 
       ws.onclose = () => {
-        setMovesEnabled(false);
-        rematchBtn.disabled = true;
-        setStatus('Соединение закрыто', 'error');
+        setStatus('Соединение закрыто', true);
       };
 
       ws.onerror = () => {
-        setStatus('Ошибка WebSocket', 'error');
+        setStatus('Ошибка WebSocket', true);
       };
     }
 
@@ -336,45 +322,53 @@
       const res = await fetch('/api/create-room', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: getName(),
-          target_score: getTargetScore()
-        })
+        body: JSON.stringify({ name: getName() })
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || 'Не удалось создать комнату');
-      }
-
+      if (!res.ok) throw new Error(data.detail || 'Не удалось создать комнату');
       roomId = data.room_id;
       playerId = data.player_id;
       roomInput.value = roomId;
-      targetLabel.textContent = data.target_score;
       connectSocket();
     }
 
     async function joinRoom() {
-      const entered = (roomInput.value || '').trim().toUpperCase();
-      if (!entered) {
-        throw new Error('Введите код комнаты');
-      }
+      const code = (roomInput.value || '').trim().toUpperCase();
+      if (!code) throw new Error('Введите код комнаты');
 
       const res = await fetch('/api/join-room', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room_id: entered, name: getName() })
+        body: JSON.stringify({ room_id: code, name: getName() })
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || 'Не удалось подключиться');
-      }
-
+      if (!res.ok) throw new Error(data.detail || 'Не удалось подключиться');
       roomId = data.room_id;
       playerId = data.player_id;
-      targetLabel.textContent = data.target_score;
       connectSocket();
+    }
+
+    function sendInput() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({ type: 'input', ...input }));
+    }
+
+    function bindControls() {
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'KeyA' || e.code === 'ArrowLeft') input.left = true;
+        if (e.code === 'KeyD' || e.code === 'ArrowRight') input.right = true;
+        if (e.code === 'KeyW' || e.code === 'ArrowUp') input.jump = true;
+        if (e.code === 'Space') input.shoot = true;
+      });
+
+      window.addEventListener('keyup', (e) => {
+        if (e.code === 'KeyA' || e.code === 'ArrowLeft') input.left = false;
+        if (e.code === 'KeyD' || e.code === 'ArrowRight') input.right = false;
+        if (e.code === 'KeyW' || e.code === 'ArrowUp') input.jump = false;
+        if (e.code === 'Space') input.shoot = false;
+      });
+
+      setInterval(sendInput, 40);
     }
 
     createBtn.addEventListener('click', async () => {
@@ -382,7 +376,7 @@
         setStatus('Создаем комнату...');
         await createRoom();
       } catch (e) {
-        setStatus(e.message || 'Ошибка', 'error');
+        setStatus(e.message || 'Ошибка', true);
       }
     });
 
@@ -391,29 +385,12 @@
         setStatus('Подключаемся...');
         await joinRoom();
       } catch (e) {
-        setStatus(e.message || 'Ошибка', 'error');
+        setStatus(e.message || 'Ошибка', true);
       }
     });
 
-    moveButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-          setStatus('Нет активного соединения', 'error');
-          return;
-        }
-        ws.send(JSON.stringify({ type: 'move', move: btn.dataset.move }));
-        setStatus('Ход отправлен. Ждем соперника...');
-      });
-    });
-
-    rematchBtn.addEventListener('click', () => {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        setStatus('Нет активного соединения', 'error');
-        return;
-      }
-      ws.send(JSON.stringify({ type: 'rematch_request' }));
-      setStatus('Запрос реванша отправлен', 'warn');
-    });
+    bindControls();
+    requestAnimationFrame(draw);
   </script>
 </body>
 </html>
