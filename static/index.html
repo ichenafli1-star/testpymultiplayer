@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
@@ -83,7 +83,7 @@
       border: 1px solid var(--border);
       border-radius: 9px;
       padding: 0 10px;
-      min-width: 140px;
+      min-width: 130px;
       font-size: 14px;
     }
 
@@ -140,6 +140,13 @@
       font-size: 13px;
       color: var(--muted);
     }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body>
@@ -155,6 +162,15 @@
           <input id="nameInput" placeholder="Ваш ник" maxlength="32" />
           <button id="createBtn">Создать комнату</button>
         </div>
+        <div class="settings-grid">
+          <input id="playerSpeedInput" type="number" min="120" max="1000" step="10" value="320" title="Скорость танка" />
+          <input id="bulletSpeedInput" type="number" min="200" max="2200" step="10" value="900" title="Скорость пули" />
+          <input id="fireCooldownInput" type="number" min="0.05" max="2" step="0.01" value="0.22" title="КД стрельбы (сек)" />
+          <input id="bulletDamageInput" type="number" min="1" max="100" step="1" value="25" title="Урон пули" />
+          <input id="maxHpInput" type="number" min="20" max="500" step="5" value="100" title="HP игрока" />
+          <input id="respawnDelayInput" type="number" min="1" max="10" step="0.1" value="2.5" title="Задержка перезапуска (сек)" />
+        </div>
+        <div class="hint">Эти параметры задает только создатель комнаты при создании.</div>
         <div class="row" style="margin-top:8px">
           <input id="roomInput" placeholder="Код комнаты" maxlength="12" />
           <button id="joinBtn">Подключиться</button>
@@ -163,6 +179,7 @@
 
       <div class="card">
         <div class="row"><strong>Комната:</strong> <span id="roomLabel">-</span></div>
+        <div class="row"><strong>Параметры:</strong> <span id="configLabel">-</span></div>
         <div id="status" class="status" style="margin-top:6px">Не подключено</div>
         <div class="hint" style="margin-top:6px">Управление: WASD или стрелки - движение, Space - выстрел</div>
       </div>
@@ -172,7 +189,7 @@
       </div>
 
       <div class="card">
-        <strong>Игроки (без лимита в комнате)</strong>
+        <strong>Онлайн игроки</strong>
         <ul id="players"></ul>
       </div>
     </div>
@@ -184,15 +201,25 @@
     const createBtn = document.getElementById('createBtn');
     const joinBtn = document.getElementById('joinBtn');
     const roomLabel = document.getElementById('roomLabel');
+    const configLabel = document.getElementById('configLabel');
     const statusEl = document.getElementById('status');
     const playersEl = document.getElementById('players');
     const canvas = document.getElementById('arena');
     const ctx = canvas.getContext('2d');
 
+    const playerSpeedInput = document.getElementById('playerSpeedInput');
+    const bulletSpeedInput = document.getElementById('bulletSpeedInput');
+    const fireCooldownInput = document.getElementById('fireCooldownInput');
+    const bulletDamageInput = document.getElementById('bulletDamageInput');
+    const maxHpInput = document.getElementById('maxHpInput');
+    const respawnDelayInput = document.getElementById('respawnDelayInput');
+
     let ws = null;
     let roomId = null;
     let playerId = null;
+    let ownerId = null;
     let lastState = null;
+    let roomConfig = null;
 
     const input = { left: false, right: false, up: false, down: false, shoot: false };
 
@@ -206,13 +233,40 @@
       return name || 'Игрок';
     }
 
+    function clampNumber(raw, min, max, fallback) {
+      const v = Number(raw);
+      if (Number.isNaN(v)) return fallback;
+      return Math.min(max, Math.max(min, v));
+    }
+
+    function collectCreateConfig() {
+      return {
+        player_speed: clampNumber(playerSpeedInput.value, 120, 1000, 320),
+        bullet_speed: clampNumber(bulletSpeedInput.value, 200, 2200, 900),
+        fire_cooldown: clampNumber(fireCooldownInput.value, 0.05, 2, 0.22),
+        bullet_damage: Math.round(clampNumber(bulletDamageInput.value, 1, 100, 25)),
+        max_hp: Math.round(clampNumber(maxHpInput.value, 20, 500, 100)),
+        respawn_delay: clampNumber(respawnDelayInput.value, 1, 10, 2.5)
+      };
+    }
+
+    function renderConfig() {
+      if (!roomConfig) {
+        configLabel.textContent = '-';
+        return;
+      }
+      configLabel.textContent =
+        `speed ${roomConfig.player_speed}, bullet ${roomConfig.bullet_speed}, cd ${roomConfig.fire_cooldown}s, dmg ${roomConfig.bullet_damage}, hp ${roomConfig.max_hp}`;
+    }
+
     function renderPlayers(players) {
       playersEl.innerHTML = '';
       for (const p of players) {
         const li = document.createElement('li');
         const me = p.player_id === playerId ? ' (Вы)' : '';
-        const state = p.connected ? (p.alive ? 'в бою' : 'уничтожен') : 'оффлайн';
-        li.innerHTML = `<span>${p.name}${me} - ${state}</span><span>HP: ${p.hp} | Победы: ${p.wins}</span>`;
+        const owner = p.player_id === ownerId ? ' [создатель]' : '';
+        const state = p.alive ? 'в бою' : 'уничтожен';
+        li.innerHTML = `<span>${p.name}${me}${owner} - ${state}</span><span>HP: ${p.hp} | Победы: ${p.wins}</span>`;
         playersEl.appendChild(li);
       }
     }
@@ -246,6 +300,7 @@
       const world = lastState.world;
       const sx = canvas.width / world.width;
       const sy = canvas.height / world.height;
+      const hpMax = (lastState.config && lastState.config.max_hp) || 100;
 
       ctx.fillStyle = '#d9efff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -264,7 +319,6 @@
         const y = p.y * sy;
         const size = world.player_size * sx;
 
-        ctx.globalAlpha = p.connected ? 1 : 0.35;
         ctx.fillStyle = p.alive ? (isMe ? '#1d4ed8' : '#dc2626') : '#6b7280';
         ctx.fillRect(x, y, size, size);
 
@@ -272,13 +326,10 @@
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(x + size / 2, y + size / 2);
-        ctx.lineTo(
-          x + size / 2 + p.facing_x * 18,
-          y + size / 2 + p.facing_y * 18
-        );
+        ctx.lineTo(x + size / 2 + p.facing_x * 18, y + size / 2 + p.facing_y * 18);
         ctx.stroke();
 
-        const hpRatio = Math.max(0, p.hp) / 100;
+        const hpRatio = Math.max(0, p.hp) / hpMax;
         ctx.fillStyle = '#e5e7eb';
         ctx.fillRect(x, y - 10, size, 6);
         ctx.fillStyle = '#16a34a';
@@ -287,8 +338,6 @@
         ctx.fillStyle = '#0f172a';
         ctx.font = '12px Segoe UI';
         ctx.fillText(p.name, x, y - 14);
-
-        ctx.globalAlpha = 1;
       }
 
       requestAnimationFrame(draw);
@@ -308,7 +357,10 @@
         const msg = JSON.parse(event.data);
         if (msg.type === 'game_state') {
           lastState = msg;
+          ownerId = msg.owner_id;
+          roomConfig = msg.config || roomConfig;
           roomLabel.textContent = msg.room_id;
+          renderConfig();
           renderPlayers(msg.players);
           if (!msg.ready_to_play) {
             setStatus('Для старта нужно минимум 2 онлайн игрока');
@@ -335,12 +387,19 @@
       const res = await fetch('/api/create-room', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: getName() })
+        body: JSON.stringify({
+          name: getName(),
+          ...collectCreateConfig()
+        })
       });
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Не удалось создать комнату');
       roomId = data.room_id;
       playerId = data.player_id;
+      ownerId = data.owner_id;
+      roomConfig = data.config || null;
+      renderConfig();
       roomInput.value = roomId;
       connectSocket();
     }
@@ -354,10 +413,14 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ room_id: code, name: getName() })
       });
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Не удалось подключиться');
       roomId = data.room_id;
       playerId = data.player_id;
+      ownerId = data.owner_id;
+      roomConfig = data.config || null;
+      renderConfig();
       connectSocket();
     }
 

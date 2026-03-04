@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import math
 import os
 import random
@@ -13,18 +13,25 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-WORLD_WIDTH = 2400.0
-WORLD_HEIGHT = 1600.0
+DEFAULT_WORLD_WIDTH = 2400.0
+DEFAULT_WORLD_HEIGHT = 1600.0
 PLAYER_SIZE = 44.0
-PLAYER_SPEED = 320.0
-MAX_HP = 100
-BULLET_SPEED = 900.0
 BULLET_RADIUS = 6.0
-BULLET_DAMAGE = 25
-FIRE_COOLDOWN = 0.22
 ROOM_TTL_SECONDS = 600
 CLEANUP_INTERVAL_SECONDS = 30
 TICK_RATE = 30
+
+
+@dataclass
+class RoomConfig:
+    world_width: float = DEFAULT_WORLD_WIDTH
+    world_height: float = DEFAULT_WORLD_HEIGHT
+    player_speed: float = 320.0
+    bullet_speed: float = 900.0
+    fire_cooldown: float = 0.22
+    bullet_damage: int = 25
+    max_hp: int = 100
+    respawn_delay: float = 2.5
 
 
 @dataclass
@@ -53,7 +60,7 @@ class PlayerSlot:
     connected: bool = False
     x: float = 0.0
     y: float = 0.0
-    hp: int = MAX_HP
+    hp: int = 100
     alive: bool = True
     wins: int = 0
     fire_cd: float = 0.0
@@ -65,6 +72,8 @@ class PlayerSlot:
 @dataclass
 class Room:
     room_id: str
+    owner_id: str
+    config: RoomConfig = field(default_factory=RoomConfig)
     players: Dict[str, PlayerSlot] = field(default_factory=dict)
     bullets: list[Bullet] = field(default_factory=list)
     last_active: float = field(default_factory=time.time)
@@ -74,11 +83,17 @@ class Room:
 
 class CreateRoomRequest(BaseModel):
     name: str = Field(default="Player 1", max_length=32)
+    player_speed: float = Field(default=320.0, ge=120.0, le=1000.0)
+    bullet_speed: float = Field(default=900.0, ge=200.0, le=2200.0)
+    fire_cooldown: float = Field(default=0.22, ge=0.05, le=2.0)
+    bullet_damage: int = Field(default=25, ge=1, le=100)
+    max_hp: int = Field(default=100, ge=20, le=500)
+    respawn_delay: float = Field(default=2.5, ge=1.0, le=10.0)
 
 
 class JoinRoomRequest(BaseModel):
     room_id: str = Field(min_length=4, max_length=12)
-    name: str = Field(default="Player 2", max_length=32)
+    name: str = Field(default="Player", max_length=32)
 
 
 app = FastAPI(title="Cube Tanks Online")
@@ -114,18 +129,20 @@ def reset_online_players(room: Room) -> None:
     cols = max(1, math.ceil(math.sqrt(n)))
     rows = max(1, math.ceil(n / cols))
     margin = 120.0
-    space_x = (WORLD_WIDTH - margin * 2) / max(1, cols - 1)
-    space_y = (WORLD_HEIGHT - margin * 2) / max(1, rows - 1)
+    world_w = room.config.world_width
+    world_h = room.config.world_height
+    space_x = (world_w - margin * 2) / max(1, cols - 1)
+    space_y = (world_h - margin * 2) / max(1, rows - 1)
 
     for i, pid in enumerate(online_ids):
         p = room.players[pid]
         r = i // cols
         c = i % cols
-        p.x = margin + (space_x * c if cols > 1 else (WORLD_WIDTH - PLAYER_SIZE) / 2)
-        p.y = margin + (space_y * r if rows > 1 else (WORLD_HEIGHT - PLAYER_SIZE) / 2)
-        p.x = min(max(0.0, p.x), WORLD_WIDTH - PLAYER_SIZE)
-        p.y = min(max(0.0, p.y), WORLD_HEIGHT - PLAYER_SIZE)
-        p.hp = MAX_HP
+        p.x = margin + (space_x * c if cols > 1 else (world_w - PLAYER_SIZE) / 2)
+        p.y = margin + (space_y * r if rows > 1 else (world_h - PLAYER_SIZE) / 2)
+        p.x = min(max(0.0, p.x), world_w - PLAYER_SIZE)
+        p.y = min(max(0.0, p.y), world_h - PLAYER_SIZE)
+        p.hp = room.config.max_hp
         p.alive = True
         p.fire_cd = 0.0
         p.facing_x = 1.0 if i % 2 == 0 else -1.0
@@ -140,11 +157,12 @@ def reset_online_players(room: Room) -> None:
 def build_state(room: Room, you: str) -> dict:
     players_payload = []
     for p in room.players.values():
+        if not p.connected:
+            continue
         players_payload.append(
             {
                 "player_id": p.player_id,
                 "name": p.name,
-                "connected": p.connected,
                 "x": round(p.x, 2),
                 "y": round(p.y, 2),
                 "hp": p.hp,
@@ -156,15 +174,24 @@ def build_state(room: Room, you: str) -> dict:
         )
 
     bullets_payload = [{"x": round(b.x, 2), "y": round(b.y, 2)} for b in room.bullets]
-    online_count = sum(1 for p in room.players.values() if p.connected)
+    online_count = len(players_payload)
 
     return {
         "type": "game_state",
         "room_id": room.room_id,
         "you": you,
+        "owner_id": room.owner_id,
+        "config": {
+            "player_speed": room.config.player_speed,
+            "bullet_speed": room.config.bullet_speed,
+            "fire_cooldown": room.config.fire_cooldown,
+            "bullet_damage": room.config.bullet_damage,
+            "max_hp": room.config.max_hp,
+            "respawn_delay": room.config.respawn_delay,
+        },
         "world": {
-            "width": WORLD_WIDTH,
-            "height": WORLD_HEIGHT,
+            "width": room.config.world_width,
+            "height": room.config.world_height,
             "player_size": PLAYER_SIZE,
         },
         "players": players_payload,
@@ -184,25 +211,44 @@ async def send_safe(ws: Optional[WebSocket], payload: dict) -> bool:
         return False
 
 
+def remove_players(room: Room, ids: list[str]) -> bool:
+    removed = False
+    for pid in ids:
+        if pid in room.players:
+            room.players.pop(pid, None)
+            removed = True
+    if removed:
+        reset_online_players(room)
+    return removed
+
+
 async def broadcast(room: Room, payload: dict):
-    for p in room.players.values():
-        if p.connected:
-            ok = await send_safe(p.ws, payload)
-            if not ok:
-                p.connected = False
-                p.ws = None
+    failed_ids = []
+    for pid, p in room.players.items():
+        if not p.connected:
+            continue
+        ok = await send_safe(p.ws, payload)
+        if not ok:
+            failed_ids.append(pid)
+
+    if failed_ids:
+        remove_players(room, failed_ids)
 
 
 async def broadcast_state(room: Room):
+    failed_ids = []
     for pid, p in room.players.items():
-        if p.connected:
-            ok = await send_safe(p.ws, build_state(room, pid))
-            if not ok:
-                p.connected = False
-                p.ws = None
+        if not p.connected:
+            continue
+        ok = await send_safe(p.ws, build_state(room, pid))
+        if not ok:
+            failed_ids.append(pid)
+
+    if failed_ids:
+        remove_players(room, failed_ids)
 
 
-def update_player_topdown(p: PlayerSlot, dt: float):
+def update_player_topdown(room: Room, p: PlayerSlot, dt: float):
     if not p.alive:
         return
 
@@ -223,11 +269,11 @@ def update_player_topdown(p: PlayerSlot, dt: float):
         uy = dy / ln
         p.facing_x = ux
         p.facing_y = uy
-        p.x += ux * PLAYER_SPEED * dt
-        p.y += uy * PLAYER_SPEED * dt
+        p.x += ux * room.config.player_speed * dt
+        p.y += uy * room.config.player_speed * dt
 
-    p.x = min(max(0.0, p.x), WORLD_WIDTH - PLAYER_SIZE)
-    p.y = min(max(0.0, p.y), WORLD_HEIGHT - PLAYER_SIZE)
+    p.x = min(max(0.0, p.x), room.config.world_width - PLAYER_SIZE)
+    p.y = min(max(0.0, p.y), room.config.world_height - PLAYER_SIZE)
 
 
 def rect_hit(px: float, py: float, size: float, bx: float, by: float, radius: float) -> bool:
@@ -246,32 +292,39 @@ def update_room_simulation(room: Room, dt: float) -> Optional[dict]:
         return None
 
     for p in room.players.values():
-        if p.connected:
-            p.fire_cd = max(0.0, p.fire_cd - dt)
-            update_player_topdown(p, dt)
+        if not p.connected:
+            continue
 
-            if p.alive and p.input_state.shoot and p.fire_cd <= 0.0:
-                dir_x = p.facing_x
-                dir_y = p.facing_y
-                if dir_x == 0.0 and dir_y == 0.0:
-                    dir_x = 1.0
-                room.bullets.append(
-                    Bullet(
-                        x=p.x + PLAYER_SIZE / 2.0 + dir_x * (PLAYER_SIZE / 2.0 + 8.0),
-                        y=p.y + PLAYER_SIZE / 2.0 + dir_y * (PLAYER_SIZE / 2.0 + 8.0),
-                        vx=dir_x * BULLET_SPEED,
-                        vy=dir_y * BULLET_SPEED,
-                        owner_id=p.player_id,
-                    )
+        p.fire_cd = max(0.0, p.fire_cd - dt)
+        update_player_topdown(room, p, dt)
+
+        if p.alive and p.input_state.shoot and p.fire_cd <= 0.0:
+            dir_x = p.facing_x
+            dir_y = p.facing_y
+            if dir_x == 0.0 and dir_y == 0.0:
+                dir_x = 1.0
+            room.bullets.append(
+                Bullet(
+                    x=p.x + PLAYER_SIZE / 2.0 + dir_x * (PLAYER_SIZE / 2.0 + 8.0),
+                    y=p.y + PLAYER_SIZE / 2.0 + dir_y * (PLAYER_SIZE / 2.0 + 8.0),
+                    vx=dir_x * room.config.bullet_speed,
+                    vy=dir_y * room.config.bullet_speed,
+                    owner_id=p.player_id,
                 )
-                p.fire_cd = FIRE_COOLDOWN
+            )
+            p.fire_cd = room.config.fire_cooldown
 
     new_bullets: list[Bullet] = []
     for b in room.bullets:
         b.x += b.vx * dt
         b.y += b.vy * dt
 
-        if b.x < -12.0 or b.x > WORLD_WIDTH + 12.0 or b.y < -12.0 or b.y > WORLD_HEIGHT + 12.0:
+        if (
+            b.x < -12.0
+            or b.x > room.config.world_width + 12.0
+            or b.y < -12.0
+            or b.y > room.config.world_height + 12.0
+        ):
             continue
 
         hit = False
@@ -279,7 +332,7 @@ def update_room_simulation(room: Room, dt: float) -> Optional[dict]:
             if not p.connected or not p.alive or p.player_id == b.owner_id:
                 continue
             if rect_hit(p.x, p.y, PLAYER_SIZE, b.x, b.y, BULLET_RADIUS):
-                p.hp = max(0, p.hp - BULLET_DAMAGE)
+                p.hp = max(0, p.hp - room.config.bullet_damage)
                 if p.hp == 0:
                     p.alive = False
                 hit = True
@@ -293,26 +346,25 @@ def update_room_simulation(room: Room, dt: float) -> Optional[dict]:
     online_players = [p for p in room.players.values() if p.connected]
     alive_online = [p for p in online_players if p.alive]
 
-    if len(online_players) >= 2 and len(alive_online) == 1:
-        winner = alive_online[0]
-        winner.wins += 1
+    if len(online_players) >= 2 and len(alive_online) <= 1:
         room.round_over = True
-        room.reset_at = now_ts() + 2.5
-        return {
-            "type": "round_over",
-            "winner_id": winner.player_id,
-            "winner_name": winner.name,
-            "message": f"Победил {winner.name}. Перезапуск через 2.5 сек...",
-        }
+        room.reset_at = now_ts() + room.config.respawn_delay
 
-    if len(online_players) >= 2 and len(alive_online) == 0:
-        room.round_over = True
-        room.reset_at = now_ts() + 2.5
+        if len(alive_online) == 1:
+            winner = alive_online[0]
+            winner.wins += 1
+            return {
+                "type": "round_over",
+                "winner_id": winner.player_id,
+                "winner_name": winner.name,
+                "message": f"Победил {winner.name}. Перезапуск через {room.config.respawn_delay:.1f} сек...",
+            }
+
         return {
             "type": "round_over",
             "winner_id": None,
             "winner_name": None,
-            "message": "Ничья. Перезапуск через 2.5 сек...",
+            "message": f"Ничья. Перезапуск через {room.config.respawn_delay:.1f} сек...",
         }
 
     return None
@@ -398,13 +450,33 @@ async def create_room(body: CreateRoomRequest):
             room_id = generate_room_id()
 
         player_id = uuid.uuid4().hex
-        room = Room(room_id=room_id)
+        config = RoomConfig(
+            player_speed=body.player_speed,
+            bullet_speed=body.bullet_speed,
+            fire_cooldown=body.fire_cooldown,
+            bullet_damage=body.bullet_damage,
+            max_hp=body.max_hp,
+            respawn_delay=body.respawn_delay,
+        )
+        room = Room(room_id=room_id, owner_id=player_id, config=config)
         room.players[player_id] = PlayerSlot(player_id=player_id, name=body.name.strip() or "Player 1")
         reset_online_players(room)
         touch_room(room)
         rooms[room_id] = room
 
-    return {"room_id": room_id, "player_id": player_id}
+    return {
+        "room_id": room_id,
+        "player_id": player_id,
+        "owner_id": player_id,
+        "config": {
+            "player_speed": config.player_speed,
+            "bullet_speed": config.bullet_speed,
+            "fire_cooldown": config.fire_cooldown,
+            "bullet_damage": config.bullet_damage,
+            "max_hp": config.max_hp,
+            "respawn_delay": config.respawn_delay,
+        },
+    }
 
 
 @app.post("/api/join-room")
@@ -421,7 +493,19 @@ async def join_room(body: JoinRoomRequest):
         reset_online_players(room)
         touch_room(room)
 
-    return {"room_id": room_id, "player_id": player_id}
+    return {
+        "room_id": room_id,
+        "player_id": player_id,
+        "owner_id": room.owner_id,
+        "config": {
+            "player_speed": room.config.player_speed,
+            "bullet_speed": room.config.bullet_speed,
+            "fire_cooldown": room.config.fire_cooldown,
+            "bullet_damage": room.config.bullet_damage,
+            "max_hp": room.config.max_hp,
+            "respawn_delay": room.config.respawn_delay,
+        },
+    }
 
 
 @app.websocket("/ws/{room_id}")
@@ -475,10 +559,7 @@ async def game_ws(websocket: WebSocket, room_id: str, player_id: str):
         async with rooms_lock:
             room = rooms.get(room_key)
             if room and player_id in room.players:
-                p = room.players[player_id]
-                p.connected = False
-                p.ws = None
-                p.input_state = InputState()
+                room.players.pop(player_id, None)
                 touch_room(room)
                 reset_online_players(room)
 
