@@ -20,6 +20,12 @@ BULLET_RADIUS = 6.0
 ROOM_TTL_SECONDS = 600
 CLEANUP_INTERVAL_SECONDS = 30
 TICK_RATE = 30
+DISCONNECT_GRACE_SECONDS = 45.0
+DISCONNECTED_PLAYER_DROP_SECONDS = 300.0
+
+
+def clamp(value: float, mn: float, mx: float) -> float:
+    return max(mn, min(mx, value))
 
 
 @dataclass
@@ -67,6 +73,7 @@ class PlayerSlot:
     facing_x: float = 1.0
     facing_y: float = 0.0
     input_state: InputState = field(default_factory=InputState)
+    disconnected_at: Optional[float] = None
 
 
 @dataclass
@@ -117,31 +124,41 @@ def generate_room_id() -> str:
     return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
-def reset_online_players(room: Room) -> None:
-    online_ids = [pid for pid, p in room.players.items() if p.connected]
-    if not online_ids:
-        room.bullets.clear()
-        room.round_over = False
-        room.reset_at = None
-        return
-
-    n = len(online_ids)
-    cols = max(1, math.ceil(math.sqrt(n)))
-    rows = max(1, math.ceil(n / cols))
+def set_player_spawn(room: Room, p: PlayerSlot, idx: int, total: int) -> None:
+    cols = max(1, math.ceil(math.sqrt(total)))
+    rows = max(1, math.ceil(total / cols))
     margin = 120.0
     world_w = room.config.world_width
     world_h = room.config.world_height
     space_x = (world_w - margin * 2) / max(1, cols - 1)
     space_y = (world_h - margin * 2) / max(1, rows - 1)
+    r = idx // cols
+    c = idx % cols
+    p.x = margin + (space_x * c if cols > 1 else (world_w - PLAYER_SIZE) / 2)
+    p.y = margin + (space_y * r if rows > 1 else (world_h - PLAYER_SIZE) / 2)
+    p.x = min(max(0.0, p.x), world_w - PLAYER_SIZE)
+    p.y = min(max(0.0, p.y), world_h - PLAYER_SIZE)
 
-    for i, pid in enumerate(online_ids):
+
+def spawn_new_player(room: Room, p: PlayerSlot) -> None:
+    total = max(1, len(room.players))
+    idx = max(0, total - 1)
+    set_player_spawn(room, p, idx, total)
+    p.hp = room.config.max_hp
+    p.alive = True
+    p.fire_cd = 0.0
+    p.facing_x = 1.0 if idx % 2 == 0 else -1.0
+    p.facing_y = 0.0
+    p.input_state = InputState()
+    p.disconnected_at = None
+
+
+def reset_round(room: Room) -> None:
+    ids = list(room.players.keys())
+    total = len(ids)
+    for i, pid in enumerate(ids):
         p = room.players[pid]
-        r = i // cols
-        c = i % cols
-        p.x = margin + (space_x * c if cols > 1 else (world_w - PLAYER_SIZE) / 2)
-        p.y = margin + (space_y * r if rows > 1 else (world_h - PLAYER_SIZE) / 2)
-        p.x = min(max(0.0, p.x), world_w - PLAYER_SIZE)
-        p.y = min(max(0.0, p.y), world_h - PLAYER_SIZE)
+        set_player_spawn(room, p, i, max(1, total))
         p.hp = room.config.max_hp
         p.alive = True
         p.fire_cd = 0.0
@@ -154,15 +171,44 @@ def reset_online_players(room: Room) -> None:
     room.reset_at = None
 
 
+def active_contender_count(room: Room) -> int:
+    ts = now_ts()
+    count = 0
+    for p in room.players.values():
+        if p.connected:
+            count += 1
+            continue
+        if p.disconnected_at is not None and (ts - p.disconnected_at) <= DISCONNECT_GRACE_SECONDS:
+            count += 1
+    return count
+
+
+def alive_contenders(room: Room) -> list[PlayerSlot]:
+    ts = now_ts()
+    result = []
+    for p in room.players.values():
+        if not p.alive:
+            continue
+        if p.connected:
+            result.append(p)
+            continue
+        if p.disconnected_at is not None and (ts - p.disconnected_at) <= DISCONNECT_GRACE_SECONDS:
+            result.append(p)
+    return result
+
+
 def build_state(room: Room, you: str) -> dict:
     players_payload = []
+    ts = now_ts()
     for p in room.players.values():
-        if not p.connected:
-            continue
+        reconnect_left = None
+        if not p.connected and p.disconnected_at is not None:
+            reconnect_left = max(0.0, DISCONNECT_GRACE_SECONDS - (ts - p.disconnected_at))
         players_payload.append(
             {
                 "player_id": p.player_id,
                 "name": p.name,
+                "connected": p.connected,
                 "x": round(p.x, 2),
                 "y": round(p.y, 2),
                 "hp": p.hp,
@@ -170,11 +216,11 @@ def build_state(room: Room, you: str) -> dict:
                 "wins": p.wins,
                 "facing_x": round(p.facing_x, 3),
                 "facing_y": round(p.facing_y, 3),
+                "reconnect_left": reconnect_left,
             }
         )
 
     bullets_payload = [{"x": round(b.x, 2), "y": round(b.y, 2)} for b in room.bullets]
-    online_count = len(players_payload)
 
     return {
         "type": "game_state",
@@ -196,7 +242,7 @@ def build_state(room: Room, you: str) -> dict:
         },
         "players": players_payload,
         "bullets": bullets_payload,
-        "ready_to_play": online_count >= 2,
+        "ready_to_play": active_contender_count(room) >= 2,
         "round_over": room.round_over,
     }
 
@@ -211,15 +257,32 @@ async def send_safe(ws: Optional[WebSocket], payload: dict) -> bool:
         return False
 
 
-def remove_players(room: Room, ids: list[str]) -> bool:
-    removed = False
-    for pid in ids:
-        if pid in room.players:
-            room.players.pop(pid, None)
-            removed = True
-    if removed:
-        reset_online_players(room)
-    return removed
+def mark_player_disconnected(room: Room, player_id: str) -> None:
+    p = room.players.get(player_id)
+    if p is None:
+        return
+    p.connected = False
+    p.ws = None
+    p.input_state = InputState()
+    p.disconnected_at = now_ts()
+
+
+def drop_stale_disconnected_players(room: Room) -> None:
+    ts = now_ts()
+    drop_ids = []
+    for pid, p in room.players.items():
+        if p.connected:
+            continue
+        if p.disconnected_at is None:
+            continue
+        if (ts - p.disconnected_at) > DISCONNECTED_PLAYER_DROP_SECONDS:
+            drop_ids.append(pid)
+
+    for pid in drop_ids:
+        room.players.pop(pid, None)
+
+    if room.owner_id not in room.players and room.players:
+        room.owner_id = next(iter(room.players.keys()))
 
 
 async def broadcast(room: Room, payload: dict):
@@ -231,8 +294,8 @@ async def broadcast(room: Room, payload: dict):
         if not ok:
             failed_ids.append(pid)
 
-    if failed_ids:
-        remove_players(room, failed_ids)
+    for pid in failed_ids:
+        mark_player_disconnected(room, pid)
 
 
 async def broadcast_state(room: Room):
@@ -244,8 +307,8 @@ async def broadcast_state(room: Room):
         if not ok:
             failed_ids.append(pid)
 
-    if failed_ids:
-        remove_players(room, failed_ids)
+    for pid in failed_ids:
+        mark_player_disconnected(room, pid)
 
 
 def update_player_topdown(room: Room, p: PlayerSlot, dt: float):
@@ -284,10 +347,26 @@ def rect_hit(px: float, py: float, size: float, bx: float, by: float, radius: fl
     return (dx * dx + dy * dy) <= (radius * radius)
 
 
+def apply_owner_config_update(room: Room, raw: dict) -> None:
+    room.config.player_speed = clamp(float(raw.get("player_speed", room.config.player_speed)), 120.0, 1000.0)
+    room.config.bullet_speed = clamp(float(raw.get("bullet_speed", room.config.bullet_speed)), 200.0, 2200.0)
+    room.config.fire_cooldown = clamp(float(raw.get("fire_cooldown", room.config.fire_cooldown)), 0.05, 2.0)
+    room.config.bullet_damage = int(clamp(float(raw.get("bullet_damage", room.config.bullet_damage)), 1.0, 100.0))
+    room.config.max_hp = int(clamp(float(raw.get("max_hp", room.config.max_hp)), 20.0, 500.0))
+    room.config.respawn_delay = clamp(float(raw.get("respawn_delay", room.config.respawn_delay)), 1.0, 10.0)
+
+    for p in room.players.values():
+        p.hp = min(p.hp, room.config.max_hp)
+        if p.hp <= 0:
+            p.alive = False
+
+
 def update_room_simulation(room: Room, dt: float) -> Optional[dict]:
+    drop_stale_disconnected_players(room)
+
     if room.round_over:
         if room.reset_at is not None and now_ts() >= room.reset_at:
-            reset_online_players(room)
+            reset_round(room)
             return {"type": "round_reset", "message": "Новый раунд начался"}
         return None
 
@@ -329,7 +408,7 @@ def update_room_simulation(room: Room, dt: float) -> Optional[dict]:
 
         hit = False
         for p in room.players.values():
-            if not p.connected or not p.alive or p.player_id == b.owner_id:
+            if not p.alive or p.player_id == b.owner_id:
                 continue
             if rect_hit(p.x, p.y, PLAYER_SIZE, b.x, b.y, BULLET_RADIUS):
                 p.hp = max(0, p.hp - room.config.bullet_damage)
@@ -343,15 +422,14 @@ def update_room_simulation(room: Room, dt: float) -> Optional[dict]:
 
     room.bullets = new_bullets
 
-    online_players = [p for p in room.players.values() if p.connected]
-    alive_online = [p for p in online_players if p.alive]
-
-    if len(online_players) >= 2 and len(alive_online) <= 1:
+    contenders = active_contender_count(room)
+    alive = alive_contenders(room)
+    if contenders >= 2 and len(alive) <= 1:
         room.round_over = True
         room.reset_at = now_ts() + room.config.respawn_delay
 
-        if len(alive_online) == 1:
-            winner = alive_online[0]
+        if len(alive) == 1:
+            winner = alive[0]
             winner.wins += 1
             return {
                 "type": "round_over",
@@ -393,8 +471,7 @@ async def simulation_loop():
 
         async with rooms_lock:
             for room in rooms.values():
-                connected_count = sum(1 for p in room.players.values() if p.connected)
-                if connected_count == 0:
+                if not room.players:
                     continue
                 touch_room(room)
                 event = update_room_simulation(room, dt)
@@ -459,8 +536,9 @@ async def create_room(body: CreateRoomRequest):
             respawn_delay=body.respawn_delay,
         )
         room = Room(room_id=room_id, owner_id=player_id, config=config)
-        room.players[player_id] = PlayerSlot(player_id=player_id, name=body.name.strip() or "Player 1")
-        reset_online_players(room)
+        p = PlayerSlot(player_id=player_id, name=body.name.strip() or "Player 1", connected=False)
+        room.players[player_id] = p
+        spawn_new_player(room, p)
         touch_room(room)
         rooms[room_id] = room
 
@@ -489,8 +567,9 @@ async def join_room(body: JoinRoomRequest):
             raise HTTPException(status_code=404, detail="Комната не найдена")
 
         player_id = uuid.uuid4().hex
-        room.players[player_id] = PlayerSlot(player_id=player_id, name=body.name.strip() or "Player")
-        reset_online_players(room)
+        p = PlayerSlot(player_id=player_id, name=body.name.strip() or "Player", connected=False)
+        room.players[player_id] = p
+        spawn_new_player(room, p)
         touch_room(room)
 
     return {
@@ -529,15 +608,13 @@ async def game_ws(websocket: WebSocket, room_id: str, player_id: str):
 
         player.ws = websocket
         player.connected = True
-        reset_online_players(room)
+        player.disconnected_at = None
         touch_room(room)
 
     try:
         while True:
             data = await websocket.receive_json()
-            if data.get("type") != "input":
-                await websocket.send_json({"type": "error", "message": "Неподдерживаемый тип сообщения"})
-                continue
+            msg_type = data.get("type")
 
             async with rooms_lock:
                 room = rooms.get(room_key)
@@ -546,11 +623,23 @@ async def game_ws(websocket: WebSocket, room_id: str, player_id: str):
                     continue
 
                 p = room.players[player_id]
-                p.input_state.left = bool(data.get("left", False))
-                p.input_state.right = bool(data.get("right", False))
-                p.input_state.up = bool(data.get("up", False))
-                p.input_state.down = bool(data.get("down", False))
-                p.input_state.shoot = bool(data.get("shoot", False))
+
+                if msg_type == "input":
+                    p.input_state.left = bool(data.get("left", False))
+                    p.input_state.right = bool(data.get("right", False))
+                    p.input_state.up = bool(data.get("up", False))
+                    p.input_state.down = bool(data.get("down", False))
+                    p.input_state.shoot = bool(data.get("shoot", False))
+                elif msg_type == "update_config":
+                    if player_id != room.owner_id:
+                        await websocket.send_json({"type": "error", "message": "Только создатель может менять настройки"})
+                        continue
+                    apply_owner_config_update(room, data)
+                    await broadcast(room, {"type": "config_updated", "message": "Настройки обновлены"})
+                else:
+                    await websocket.send_json({"type": "error", "message": "Неподдерживаемый тип сообщения"})
+                    continue
+
                 touch_room(room)
 
     except WebSocketDisconnect:
@@ -559,9 +648,8 @@ async def game_ws(websocket: WebSocket, room_id: str, player_id: str):
         async with rooms_lock:
             room = rooms.get(room_key)
             if room and player_id in room.players:
-                room.players.pop(player_id, None)
+                mark_player_disconnected(room, player_id)
                 touch_room(room)
-                reset_online_players(room)
 
 
 if __name__ == "__main__":

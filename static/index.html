@@ -17,103 +17,142 @@
 
     * { box-sizing: border-box; }
 
-    body {
+    html, body {
+      width: 100%;
+      height: 100%;
       margin: 0;
+      overflow: hidden;
       font-family: "Segoe UI", Tahoma, sans-serif;
       color: var(--text);
       background:
         radial-gradient(circle at 18% 14%, #def1ff 0%, transparent 35%),
         radial-gradient(circle at 78% 16%, #d8ffec 0%, transparent 40%),
         linear-gradient(180deg, #f9fcff 0%, #eef5ff 100%);
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 18px;
+    }
+
+    body {
+      padding: 10px;
     }
 
     .app {
       width: 100%;
-      max-width: 1200px;
+      height: calc(100vh - 20px);
       border: 1px solid var(--border);
       border-radius: 14px;
       background: var(--card);
       box-shadow: 0 14px 35px rgba(35, 54, 80, 0.12);
       overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr;
     }
 
     .header {
       background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
       color: #fff;
-      padding: 16px 20px;
+      padding: 12px 16px;
     }
 
     .header h1 {
       margin: 0;
-      font-size: 24px;
+      font-size: 21px;
     }
 
     .header p {
-      margin: 6px 0 0;
+      margin: 4px 0 0;
       opacity: 0.92;
-      font-size: 14px;
+      font-size: 13px;
     }
 
     .content {
-      padding: 16px;
+      padding: 10px;
       display: grid;
-      gap: 12px;
+      gap: 8px;
+      grid-template-columns: 350px 1fr;
+      min-height: 0;
+    }
+
+    .side {
+      display: grid;
+      gap: 8px;
+      grid-auto-rows: min-content;
+      min-height: 0;
+      overflow: auto;
+      padding-right: 2px;
     }
 
     .card {
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 12px;
+      padding: 10px;
       background: #fff;
     }
 
     .row {
       display: flex;
-      gap: 8px;
+      gap: 6px;
       flex-wrap: wrap;
       align-items: center;
     }
 
-    input {
-      height: 36px;
+    input[type="text"], input[type="number"] {
+      height: 34px;
       border: 1px solid var(--border);
-      border-radius: 9px;
+      border-radius: 8px;
       padding: 0 10px;
-      min-width: 130px;
+      min-width: 120px;
       font-size: 14px;
+      width: 100%;
     }
 
     button {
       border: none;
       background: var(--accent);
       color: #fff;
-      border-radius: 9px;
-      height: 36px;
+      border-radius: 8px;
+      height: 34px;
       padding: 0 12px;
       cursor: pointer;
       font-size: 14px;
     }
 
-    button:hover { filter: brightness(0.95); }
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
 
-    .status { color: var(--muted); font-size: 14px; }
+    .status { color: var(--muted); font-size: 13px; }
     .status.error { color: var(--danger); }
+    .hint { font-size: 12px; color: var(--muted); }
+
+    .slider {
+      margin-top: 8px;
+    }
+
+    .slider .lbl {
+      font-size: 12px;
+      margin-bottom: 2px;
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .slider input[type="range"] {
+      width: 100%;
+    }
 
     .arena-wrap {
       border: 1px solid var(--border);
       border-radius: 10px;
       overflow: hidden;
       background: #d9efff;
+      min-height: 0;
+      display: grid;
     }
 
     .arena {
       width: 100%;
+      height: 100%;
       display: block;
-      aspect-ratio: 3 / 2;
       background: linear-gradient(180deg, #d9efff 0%, #edf7ff 45%, #dff1df 45%, #d1e8d1 100%);
     }
 
@@ -133,19 +172,17 @@
       padding: 7px 9px;
       display: flex;
       justify-content: space-between;
-      font-size: 14px;
-    }
-
-    .hint {
       font-size: 13px;
-      color: var(--muted);
+      gap: 8px;
     }
 
-    .settings-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 8px;
-      margin-top: 8px;
+    @media (max-width: 980px) {
+      .content {
+        grid-template-columns: 1fr;
+      }
+      .arena-wrap {
+        min-height: 45vh;
+      }
     }
   </style>
 </head>
@@ -153,73 +190,108 @@
   <div class="app">
     <div class="header">
       <h1>Cube Tanks Online</h1>
-      <p>Топ-даун арена: двигайся по X/Y и стреляй, пока не останется один</p>
+      <p>Отключение сети не сбрасывает раунд. Вернись в бой после переподключения.</p>
     </div>
 
     <div class="content">
-      <div class="card">
-        <div class="row">
-          <input id="nameInput" placeholder="Ваш ник" maxlength="32" />
-          <button id="createBtn">Создать комнату</button>
+      <div class="side">
+        <div class="card">
+          <div class="row">
+            <input id="nameInput" type="text" placeholder="Ваш ник" maxlength="32" />
+          </div>
+          <div class="row" style="margin-top:6px">
+            <button id="createBtn">Создать комнату</button>
+            <input id="roomInput" type="text" placeholder="Код комнаты" maxlength="12" />
+            <button id="joinBtn">Подключиться</button>
+          </div>
+          <div class="hint" style="margin-top:6px">Управление: WASD/стрелки - движение, Space - выстрел</div>
         </div>
-        <div class="settings-grid">
-          <input id="playerSpeedInput" type="number" min="120" max="1000" step="10" value="320" title="Скорость танка" />
-          <input id="bulletSpeedInput" type="number" min="200" max="2200" step="10" value="900" title="Скорость пули" />
-          <input id="fireCooldownInput" type="number" min="0.05" max="2" step="0.01" value="0.22" title="КД стрельбы (сек)" />
-          <input id="bulletDamageInput" type="number" min="1" max="100" step="1" value="25" title="Урон пули" />
-          <input id="maxHpInput" type="number" min="20" max="500" step="5" value="100" title="HP игрока" />
-          <input id="respawnDelayInput" type="number" min="1" max="10" step="0.1" value="2.5" title="Задержка перезапуска (сек)" />
-        </div>
-        <div class="hint">Эти параметры задает только создатель комнаты при создании.</div>
-        <div class="row" style="margin-top:8px">
-          <input id="roomInput" placeholder="Код комнаты" maxlength="12" />
-          <button id="joinBtn">Подключиться</button>
-        </div>
-      </div>
 
-      <div class="card">
-        <div class="row"><strong>Комната:</strong> <span id="roomLabel">-</span></div>
-        <div class="row"><strong>Параметры:</strong> <span id="configLabel">-</span></div>
-        <div id="status" class="status" style="margin-top:6px">Не подключено</div>
-        <div class="hint" style="margin-top:6px">Управление: WASD или стрелки - движение, Space - выстрел</div>
+        <div class="card">
+          <div><strong>Настройки матча (создатель)</strong></div>
+          <div class="slider">
+            <div class="lbl"><span>Скорость танка</span><span id="vPlayerSpeed"></span></div>
+            <input id="playerSpeed" type="range" min="120" max="1000" step="10" value="320" />
+          </div>
+          <div class="slider">
+            <div class="lbl"><span>Скорость пули</span><span id="vBulletSpeed"></span></div>
+            <input id="bulletSpeed" type="range" min="200" max="2200" step="10" value="900" />
+          </div>
+          <div class="slider">
+            <div class="lbl"><span>Перезарядка (сек)</span><span id="vCooldown"></span></div>
+            <input id="fireCooldown" type="range" min="0.05" max="2" step="0.01" value="0.22" />
+          </div>
+          <div class="slider">
+            <div class="lbl"><span>Урон пули</span><span id="vDamage"></span></div>
+            <input id="bulletDamage" type="range" min="1" max="100" step="1" value="25" />
+          </div>
+          <div class="slider">
+            <div class="lbl"><span>HP игрока</span><span id="vHp"></span></div>
+            <input id="maxHp" type="range" min="20" max="500" step="5" value="100" />
+          </div>
+          <div class="slider">
+            <div class="lbl"><span>Перезапуск (сек)</span><span id="vRespawn"></span></div>
+            <input id="respawnDelay" type="range" min="1" max="10" step="0.1" value="2.5" />
+          </div>
+        </div>
+
+        <div class="card">
+          <div><strong>Комната:</strong> <span id="roomLabel">-</span></div>
+          <div><strong>Роль:</strong> <span id="roleLabel">-</span></div>
+          <div id="status" class="status" style="margin-top:6px">Не подключено</div>
+        </div>
+
+        <div class="card">
+          <strong>Игроки</strong>
+          <ul id="players"></ul>
+        </div>
       </div>
 
       <div class="arena-wrap">
-        <canvas id="arena" class="arena" width="1500" height="1000"></canvas>
-      </div>
-
-      <div class="card">
-        <strong>Онлайн игроки</strong>
-        <ul id="players"></ul>
+        <canvas id="arena" class="arena" width="1920" height="1080"></canvas>
       </div>
     </div>
   </div>
 
   <script>
+    const SESSION_KEY = 'cube_tanks_session_v1';
+
     const nameInput = document.getElementById('nameInput');
     const roomInput = document.getElementById('roomInput');
     const createBtn = document.getElementById('createBtn');
     const joinBtn = document.getElementById('joinBtn');
     const roomLabel = document.getElementById('roomLabel');
-    const configLabel = document.getElementById('configLabel');
+    const roleLabel = document.getElementById('roleLabel');
     const statusEl = document.getElementById('status');
     const playersEl = document.getElementById('players');
     const canvas = document.getElementById('arena');
     const ctx = canvas.getContext('2d');
 
-    const playerSpeedInput = document.getElementById('playerSpeedInput');
-    const bulletSpeedInput = document.getElementById('bulletSpeedInput');
-    const fireCooldownInput = document.getElementById('fireCooldownInput');
-    const bulletDamageInput = document.getElementById('bulletDamageInput');
-    const maxHpInput = document.getElementById('maxHpInput');
-    const respawnDelayInput = document.getElementById('respawnDelayInput');
+    const sliders = {
+      player_speed: document.getElementById('playerSpeed'),
+      bullet_speed: document.getElementById('bulletSpeed'),
+      fire_cooldown: document.getElementById('fireCooldown'),
+      bullet_damage: document.getElementById('bulletDamage'),
+      max_hp: document.getElementById('maxHp'),
+      respawn_delay: document.getElementById('respawnDelay')
+    };
+    const sliderLabels = {
+      player_speed: document.getElementById('vPlayerSpeed'),
+      bullet_speed: document.getElementById('vBulletSpeed'),
+      fire_cooldown: document.getElementById('vCooldown'),
+      bullet_damage: document.getElementById('vDamage'),
+      max_hp: document.getElementById('vHp'),
+      respawn_delay: document.getElementById('vRespawn')
+    };
 
     let ws = null;
+    let reconnectTimer = null;
+    let reconnectDelayMs = 1000;
     let roomId = null;
     let playerId = null;
     let ownerId = null;
-    let lastState = null;
     let roomConfig = null;
+    let lastState = null;
 
     const input = { left: false, right: false, up: false, down: false, shoot: false };
 
@@ -228,35 +300,69 @@
       statusEl.className = isError ? 'status error' : 'status';
     }
 
+    function saveSession() {
+      if (!roomId || !playerId) return;
+      localStorage.setItem(SESSION_KEY, JSON.stringify({
+        room_id: roomId,
+        player_id: playerId,
+        owner_id: ownerId,
+        name: nameInput.value || ''
+      }));
+    }
+
+    function clearSession() {
+      localStorage.removeItem(SESSION_KEY);
+    }
+
+    function loadSession() {
+      try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch (_) {
+        return null;
+      }
+    }
+
     function getName() {
-      const name = (nameInput.value || '').trim();
-      return name || 'Игрок';
+      const n = (nameInput.value || '').trim();
+      return n || 'Игрок';
     }
 
-    function clampNumber(raw, min, max, fallback) {
-      const v = Number(raw);
-      if (Number.isNaN(v)) return fallback;
-      return Math.min(max, Math.max(min, v));
-    }
-
-    function collectCreateConfig() {
+    function sliderConfigFromUI() {
       return {
-        player_speed: clampNumber(playerSpeedInput.value, 120, 1000, 320),
-        bullet_speed: clampNumber(bulletSpeedInput.value, 200, 2200, 900),
-        fire_cooldown: clampNumber(fireCooldownInput.value, 0.05, 2, 0.22),
-        bullet_damage: Math.round(clampNumber(bulletDamageInput.value, 1, 100, 25)),
-        max_hp: Math.round(clampNumber(maxHpInput.value, 20, 500, 100)),
-        respawn_delay: clampNumber(respawnDelayInput.value, 1, 10, 2.5)
+        player_speed: Number(sliders.player_speed.value),
+        bullet_speed: Number(sliders.bullet_speed.value),
+        fire_cooldown: Number(sliders.fire_cooldown.value),
+        bullet_damage: Number(sliders.bullet_damage.value),
+        max_hp: Number(sliders.max_hp.value),
+        respawn_delay: Number(sliders.respawn_delay.value)
       };
     }
 
-    function renderConfig() {
-      if (!roomConfig) {
-        configLabel.textContent = '-';
-        return;
-      }
-      configLabel.textContent =
-        `speed ${roomConfig.player_speed}, bullet ${roomConfig.bullet_speed}, cd ${roomConfig.fire_cooldown}s, dmg ${roomConfig.bullet_damage}, hp ${roomConfig.max_hp}`;
+    function syncSliderLabels() {
+      sliderLabels.player_speed.textContent = sliders.player_speed.value;
+      sliderLabels.bullet_speed.textContent = sliders.bullet_speed.value;
+      sliderLabels.fire_cooldown.textContent = Number(sliders.fire_cooldown.value).toFixed(2);
+      sliderLabels.bullet_damage.textContent = sliders.bullet_damage.value;
+      sliderLabels.max_hp.textContent = sliders.max_hp.value;
+      sliderLabels.respawn_delay.textContent = Number(sliders.respawn_delay.value).toFixed(1);
+    }
+
+    function applyConfigToUI(cfg) {
+      if (!cfg) return;
+      Object.keys(sliders).forEach((k) => {
+        if (cfg[k] !== undefined && cfg[k] !== null) {
+          sliders[k].value = String(cfg[k]);
+        }
+      });
+      syncSliderLabels();
+    }
+
+    function setConfigEditable(editable) {
+      Object.values(sliders).forEach((el) => {
+        el.disabled = !editable;
+      });
     }
 
     function renderPlayers(players) {
@@ -264,10 +370,24 @@
       for (const p of players) {
         const li = document.createElement('li');
         const me = p.player_id === playerId ? ' (Вы)' : '';
-        const owner = p.player_id === ownerId ? ' [создатель]' : '';
-        const state = p.alive ? 'в бою' : 'уничтожен';
-        li.innerHTML = `<span>${p.name}${me}${owner} - ${state}</span><span>HP: ${p.hp} | Победы: ${p.wins}</span>`;
+        const ownerTag = p.player_id === ownerId ? ' [создатель]' : '';
+        let state = p.alive ? 'в бою' : 'уничтожен';
+        if (!p.connected) {
+          const left = p.reconnect_left == null ? '' : ` (${p.reconnect_left.toFixed(0)}с)`;
+          state = `переподключается${left}`;
+        }
+        li.innerHTML = `<span>${p.name}${me}${ownerTag} - ${state}</span><span>HP: ${p.hp} | Победы: ${p.wins}</span>`;
         playersEl.appendChild(li);
+      }
+    }
+
+    function resizeCanvasToContainer() {
+      const parent = canvas.parentElement;
+      const w = parent.clientWidth;
+      const h = parent.clientHeight;
+      if (w > 0 && h > 0) {
+        canvas.width = Math.floor(w);
+        canvas.height = Math.floor(h);
       }
     }
 
@@ -319,6 +439,7 @@
         const y = p.y * sy;
         const size = world.player_size * sx;
 
+        ctx.globalAlpha = p.connected ? 1 : 0.5;
         ctx.fillStyle = p.alive ? (isMe ? '#1d4ed8' : '#dc2626') : '#6b7280';
         ctx.fillRect(x, y, size, size);
 
@@ -338,19 +459,36 @@
         ctx.fillStyle = '#0f172a';
         ctx.font = '12px Segoe UI';
         ctx.fillText(p.name, x, y - 14);
+        ctx.globalAlpha = 1;
       }
 
       requestAnimationFrame(draw);
     }
 
+    function tryScheduleReconnect() {
+      if (reconnectTimer || !roomId || !playerId) return;
+      setStatus('Связь потеряна, переподключаемся...');
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectSocket();
+      }, reconnectDelayMs);
+      reconnectDelayMs = Math.min(5000, reconnectDelayMs + 500);
+    }
+
     function connectSocket() {
+      if (!roomId || !playerId) return;
       if (ws) ws.close();
 
       const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
       ws = new WebSocket(`${protocol}://${location.host}/ws/${roomId}?player_id=${playerId}`);
 
       ws.onopen = () => {
-        setStatus('Подключено. Ждем других игроков...');
+        reconnectDelayMs = 1000;
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+        setStatus('Подключено');
       };
 
       ws.onmessage = (event) => {
@@ -360,22 +498,26 @@
           ownerId = msg.owner_id;
           roomConfig = msg.config || roomConfig;
           roomLabel.textContent = msg.room_id;
-          renderConfig();
+          roleLabel.textContent = ownerId === playerId ? 'Создатель' : 'Игрок';
+          setConfigEditable(ownerId === playerId);
+          applyConfigToUI(roomConfig);
           renderPlayers(msg.players);
           if (!msg.ready_to_play) {
-            setStatus('Для старта нужно минимум 2 онлайн игрока');
+            setStatus('Нужно минимум 2 активных игрока');
           }
         } else if (msg.type === 'round_over') {
           setStatus(msg.message || 'Раунд завершен');
         } else if (msg.type === 'round_reset') {
           setStatus(msg.message || 'Новый раунд начался');
+        } else if (msg.type === 'config_updated') {
+          setStatus(msg.message || 'Настройки обновлены');
         } else if (msg.type === 'error') {
           setStatus(msg.message || 'Ошибка', true);
         }
       };
 
       ws.onclose = () => {
-        setStatus('Соединение закрыто', true);
+        tryScheduleReconnect();
       };
 
       ws.onerror = () => {
@@ -389,7 +531,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: getName(),
-          ...collectCreateConfig()
+          ...sliderConfigFromUI()
         })
       });
 
@@ -399,8 +541,9 @@
       playerId = data.player_id;
       ownerId = data.owner_id;
       roomConfig = data.config || null;
-      renderConfig();
       roomInput.value = roomId;
+      applyConfigToUI(roomConfig);
+      saveSession();
       connectSocket();
     }
 
@@ -420,7 +563,8 @@
       playerId = data.player_id;
       ownerId = data.owner_id;
       roomConfig = data.config || null;
-      renderConfig();
+      applyConfigToUI(roomConfig);
+      saveSession();
       connectSocket();
     }
 
@@ -429,22 +573,39 @@
       ws.send(JSON.stringify({ type: 'input', ...input }));
     }
 
+    let configPushTimer = null;
+    function scheduleConfigPush() {
+      syncSliderLabels();
+      if (ownerId !== playerId) return;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      if (configPushTimer) clearTimeout(configPushTimer);
+      configPushTimer = setTimeout(() => {
+        configPushTimer = null;
+        ws.send(JSON.stringify({
+          type: 'update_config',
+          ...sliderConfigFromUI()
+        }));
+      }, 120);
+    }
+
     function bindControls() {
       window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') e.preventDefault();
         if (e.code === 'KeyA' || e.code === 'ArrowLeft') input.left = true;
         if (e.code === 'KeyD' || e.code === 'ArrowRight') input.right = true;
         if (e.code === 'KeyW' || e.code === 'ArrowUp') input.up = true;
         if (e.code === 'KeyS' || e.code === 'ArrowDown') input.down = true;
         if (e.code === 'Space') input.shoot = true;
-      });
+      }, { passive: false });
 
       window.addEventListener('keyup', (e) => {
+        if (e.code === 'Space') e.preventDefault();
         if (e.code === 'KeyA' || e.code === 'ArrowLeft') input.left = false;
         if (e.code === 'KeyD' || e.code === 'ArrowRight') input.right = false;
         if (e.code === 'KeyW' || e.code === 'ArrowUp') input.up = false;
         if (e.code === 'KeyS' || e.code === 'ArrowDown') input.down = false;
         if (e.code === 'Space') input.shoot = false;
-      });
+      }, { passive: false });
 
       setInterval(sendInput, 40);
     }
@@ -467,8 +628,30 @@
       }
     });
 
+    Object.values(sliders).forEach((el) => {
+      el.addEventListener('input', scheduleConfigPush);
+    });
+
+    window.addEventListener('resize', resizeCanvasToContainer);
+    window.addEventListener('beforeunload', () => {
+      if (ws) ws.close();
+    });
+
     bindControls();
+    syncSliderLabels();
+    resizeCanvasToContainer();
     requestAnimationFrame(draw);
+
+    const saved = loadSession();
+    if (saved && saved.room_id && saved.player_id) {
+      roomId = saved.room_id;
+      playerId = saved.player_id;
+      ownerId = saved.owner_id || null;
+      roomInput.value = roomId;
+      if (saved.name) nameInput.value = saved.name;
+      setStatus('Восстанавливаем подключение...');
+      connectSocket();
+    }
   </script>
 </body>
 </html>
